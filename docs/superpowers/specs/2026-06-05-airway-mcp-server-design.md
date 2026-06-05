@@ -141,8 +141,8 @@ airway/
 ```env
 # Bisheng
 BISHENG_BASE_URL=http://localhost:7860
-BISHENG_USERNAME=admin
-BISHENG_PASSWORD=***
+BISHENG_ADMIN_USER=admin        # 管理员账号，用于自动注册 clawith_ 用户
+BISHENG_ADMIN_PASSWORD=***      # 管理员密码
 
 # Clawith
 CLAWITH_JWT_SECRET=***
