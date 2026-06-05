@@ -20,14 +20,14 @@
 采用**独立 MCP 服务**（方案 A）。Airway 作为独立进程运行，Clawith Agent 通过 MCP 协议调用 Bisheng RAG 能力。
 
 ```
-Clawith Agent ──MCP (stdio/SSE)──▶ Airway ──HTTP REST──▶ Bisheng API
-   │                                  │                      │
-   PostgreSQL                    Redis (共享)               MySQL
+Clawith Agent ──MCP (Streamable HTTP)──▶ Airway ──HTTP REST──▶ Bisheng API
+   │                                        │                      │
+   PostgreSQL (共享)                    Redis (共享)              MySQL
 ```
 
-**共享基础设施：** Redis 实例通过 key prefix 隔离（`airway:` 前缀）。
-
-**数据库各自独立**，零升级风险。
+**共享基础设施：**
+- **PostgreSQL：** 在 Clawith 的 PostgreSQL 实例上新建 `airway` 数据库，存储用户映射表。不触碰 Clawith 原有数据库。
+- **Redis：** 通过 key prefix 隔离（`airway:` 前缀）。
 
 ## 3. 模块划分
 
@@ -41,13 +41,13 @@ Airway 包含 3 个核心模块，各自单一职责：
 
 1. 验证 Clawith JWT 签名，提取 user_id
 2. 查 Redis 缓存（key: `airway:session:{clawith_uid}`）
-3. 缓存未命中 → 查 SQLite 用户映射表
+3. 缓存未命中 → 查 PostgreSQL 用户映射表
 4. 映射不存在 → 在 Bisheng 自动注册账号（约定：`clawith_{uid}`）
 5. 调用 Bisheng 登录 API 获取 session
 6. 缓存 session 到 Redis，TTL 与 Bisheng session 同步
 7. 带 session 调用 Bisheng RAG API
 
-**用户映射策略：** SQLite + SQLModel ORM。首次访问时自动创建映射。
+**用户映射策略：** PostgreSQL（独立 `airway` 数据库）+ SQLModel ORM。首次访问时自动创建映射。与 Clawith 共享同一个 PostgreSQL 实例，但使用独立数据库，互不干扰。
 
 ```python
 class UserMapping(SQLModel, table=True):
@@ -118,7 +118,7 @@ airway/
 │   ├── test_auth.py
 │   ├── test_tools.py
 │   └── test_client.py
-└── data/                       # SQLite 数据文件 (gitignore)
+└── .env.example                    # 环境变量示例
 ```
 
 ## 5. 技术选型
@@ -127,12 +127,13 @@ airway/
 |------|-----|------|
 | MCP 协议 | `mcp` | 官方 Python SDK，实现 Server 端 |
 | HTTP 客户端 | `httpx` | 异步 HTTP，调用 Bisheng API |
-| ORM | `sqlmodel` | 用户映射表，SQLite 存储 |
+| ORM | `sqlmodel` | 用户映射表，PostgreSQL 存储（共享 Clawith PG 实例） |
+| PG 驱动 | `asyncpg` | SQLModel 异步 PostgreSQL 驱动 |
 | 配置管理 | `pydantic-settings` | 环境变量 + .env 文件 |
 | JWT 验证 | `PyJWT` | 验证 Clawith JWT 签名 |
 | 缓存 | `redis-py` | Session 缓存，共享 Redis |
 
-总计 6 个直接依赖。
+总计 7 个直接依赖。
 
 ## 6. 配置项
 
@@ -148,12 +149,14 @@ BISHENG_ADMIN_PASSWORD=***      # 管理员密码
 CLAWITH_JWT_SECRET=***
 CLAWITH_JWT_ALGORITHM=HS256
 
-# Redis
+# PostgreSQL（共享 Clawith 实例，独立数据库）
+DATABASE_URL=postgresql://user:pass@localhost:5432/airway
+
+# Redis（共享实例）
 REDIS_URL=redis://localhost:6379/0
 REDIS_KEY_PREFIX=airway:
 
 # Airway
-AIRWAY_DB_PATH=./data/airway.db
 AIRWAY_LOG_LEVEL=INFO
 ```
 
@@ -166,9 +169,9 @@ AIRWAY_LOG_LEVEL=INFO
 airway serve --transport stdio
 ```
 
-**SSE 模式**（独立进程，Clawith 远程连接）：
+**Streamable HTTP 模式**（独立进程，Clawith 远程连接）：
 ```bash
-airway serve --transport sse --port 8080
+airway serve --transport streamable-http --port 8080
 ```
 
 Clawith 侧 MCP Server 配置：
@@ -176,7 +179,7 @@ Clawith 侧 MCP Server 配置：
 {
   "mcpServers": {
     "airway-rag": {
-      "url": "http://localhost:8080/sse"
+      "url": "http://localhost:8080/mcp"
     }
   }
 }
