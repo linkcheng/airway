@@ -1,0 +1,14 @@
+server:
+  host: "0.0.0.0"
+  port: 8090
+
+bisheng:
+  v2_api_url: "http://bisheng-backend:7860/api/v2"
+  v1_api_url: "http://bisheng-backend:7860/api/v1"
+  admin_username: "${BISHENG_ADMIN_USER}"
+  admin_password: "${BISHENG_ADMIN_PASS}"
+  redis_url: "redis://redis:6379/0"
+  knowledge_bases:
+    - name: "产品文档"
+      assistant_id: "asst_product_001"
+      kb_id: "kb_prod_001"
