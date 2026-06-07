@@ -33,7 +33,12 @@ async def init_deps() -> AirwayTools:
     _engine = create_async_engine(settings.database_url, echo=False)
     session_factory = async_sessionmaker(_engine, expire_on_commit=False)
 
-    redis = aioredis.from_url(settings.redis_url)
+    try:
+        redis = aioredis.from_url(settings.redis_url)
+        await redis.ping()
+    except Exception:
+        logger.warning("Redis unavailable, running without cache")
+        redis = None
     client = BishengClient(base_url=settings.bisheng_base_url)
 
     proxy = AuthProxy(

@@ -74,3 +74,24 @@ async def test_get_session_auto_register(proxy, redis, session_factory):
 
     cached = await redis.get("airway:session:u_new")
     assert cached == b"token_clawith_u_new"
+
+
+@pytest.mark.asyncio
+async def test_get_session_without_redis(mock_client, session_factory):
+    proxy = AuthProxy(
+        client=mock_client,
+        redis=None,
+        session_factory=session_factory,
+        key_prefix="airway:",
+    )
+    token = await proxy.get_session("u_nocache")
+    assert token == "token_clawith_u_nocache"
+
+    async with session_factory() as session:
+        from sqlmodel import select
+
+        result = await session.execute(
+            select(UserMapping).where(UserMapping.clawith_uid == "u_nocache")
+        )
+    mapping = result.scalar_one()
+    assert mapping.bisheng_username == "clawith_u_nocache"
