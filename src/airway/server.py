@@ -36,15 +36,13 @@ async def init_deps() -> AirwayTools:
     redis = aioredis.from_url(settings.redis_url)
     client = BishengClient(base_url=settings.bisheng_base_url)
 
-    async with session_factory() as session:
-        proxy = AuthProxy(
-            client=client,
-            redis=redis,
-            session=session,
-            key_prefix=settings.redis_key_prefix,
-        )
-        _tools = AirwayTools(proxy=proxy, client=client)
-
+    proxy = AuthProxy(
+        client=client,
+        redis=redis,
+        session_factory=session_factory,
+        key_prefix=settings.redis_key_prefix,
+    )
+    _tools = AirwayTools(proxy=proxy, client=client)
     return _tools
 
 

@@ -1,4 +1,3 @@
-# tests/test_auth.py
 import pytest
 import fakeredis.aioredis
 
@@ -24,26 +23,33 @@ def mock_client():
     return MockClient()
 
 
-@pytest.mark.asyncio
-async def test_get_session_cache_hit(redis, mock_client, db_session):
-    proxy = AuthProxy(
-        client=mock_client, redis=redis, session=db_session, key_prefix="airway:",
+@pytest.fixture
+def proxy(mock_client, redis, session_factory):
+    return AuthProxy(
+        client=mock_client,
+        redis=redis,
+        session_factory=session_factory,
+        key_prefix="airway:",
     )
+
+
+@pytest.mark.asyncio
+async def test_get_session_cache_hit(proxy, redis):
     await redis.set("airway:session:u_test", "cached_token_123")
     token = await proxy.get_session("u_test")
     assert token == "cached_token_123"
 
 
 @pytest.mark.asyncio
-async def test_get_session_from_mapping(redis, mock_client, db_session):
-    proxy = AuthProxy(
-        client=mock_client, redis=redis, session=db_session, key_prefix="airway:",
-    )
-    mapping = UserMapping(
-        clawith_uid="u_abc", bisheng_uid="42", bisheng_username="clawith_u_abc",
-    )
-    db_session.add(mapping)
-    await db_session.commit()
+async def test_get_session_from_mapping(proxy, redis, session_factory):
+    async with session_factory() as session:
+        from sqlmodel import select
+
+        mapping = UserMapping(
+            clawith_uid="u_abc", bisheng_uid="42", bisheng_username="clawith_u_abc",
+        )
+        session.add(mapping)
+        await session.commit()
 
     token = await proxy.get_session("u_abc")
     assert token == "token_clawith_u_abc"
@@ -53,19 +59,17 @@ async def test_get_session_from_mapping(redis, mock_client, db_session):
 
 
 @pytest.mark.asyncio
-async def test_get_session_auto_register(redis, mock_client, db_session):
-    proxy = AuthProxy(
-        client=mock_client, redis=redis, session=db_session, key_prefix="airway:",
-    )
+async def test_get_session_auto_register(proxy, redis, session_factory):
     token = await proxy.get_session("u_new")
     assert token == "token_clawith_u_new"
 
-    from sqlmodel import select
+    async with session_factory() as session:
+        from sqlmodel import select
 
-    result = await db_session.execute(
-        select(UserMapping).where(UserMapping.clawith_uid == "u_new")
-    )
-    mapping = result.scalar_one()
+        result = await session.execute(
+            select(UserMapping).where(UserMapping.clawith_uid == "u_new")
+        )
+        mapping = result.scalar_one()
     assert mapping.bisheng_username == "clawith_u_new"
 
     cached = await redis.get("airway:session:u_new")

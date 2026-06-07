@@ -1,7 +1,6 @@
-# src/airway/auth/proxy.py
 import redis.asyncio as aioredis
 from sqlmodel import select
-from sqlmodel.ext.asyncio.session import AsyncSession
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from airway.client.bisheng import BishengClient
 from airway.models.mapping import UserMapping
@@ -11,14 +10,14 @@ class AuthProxy:
     def __init__(
         self,
         client: BishengClient,
-        redis: aioredis.Redis,
-        session: AsyncSession,
+        redis: aioredis.Redis | None,
+        session_factory: async_sessionmaker,
         key_prefix: str = "airway:",
         session_ttl: int = 3600,
     ):
         self._client = client
         self._redis = redis
-        self._session = session
+        self._session_factory = session_factory
         self._key_prefix = key_prefix
         self._session_ttl = session_ttl
 
@@ -26,35 +25,44 @@ class AuthProxy:
         return f"{self._key_prefix}session:{clawith_uid}"
 
     async def get_session(self, clawith_uid: str) -> str:
-        # 1. Redis cache
-        cache_key = self._cache_key(clawith_uid)
-        cached = await self._redis.get(cache_key)
-        if cached:
-            return cached.decode()
+        if self._redis:
+            cached = await self._redis.get(self._cache_key(clawith_uid))
+            if cached:
+                return cached.decode()
+        return await self._acquire_session(clawith_uid)
 
-        # 2. DB mapping
-        result = await self._session.execute(
-            select(UserMapping).where(UserMapping.clawith_uid == clawith_uid)
-        )
-        mapping = result.scalar_one_or_none()
+    async def refresh_session(self, clawith_uid: str) -> str:
+        if self._redis:
+            await self._redis.delete(self._cache_key(clawith_uid))
+        return await self._acquire_session(clawith_uid)
 
-        if mapping is None:
-            # 3. Auto-register
-            bisheng_username = f"clawith_{clawith_uid}"
-            token = await self._client.login(bisheng_username, bisheng_username)
-            mapping = UserMapping(
-                clawith_uid=clawith_uid,
-                bisheng_uid=bisheng_username,
-                bisheng_username=bisheng_username,
+    async def _acquire_session(self, clawith_uid: str) -> str:
+        token = await self._login_for_user(clawith_uid)
+        if self._redis:
+            await self._redis.set(
+                self._cache_key(clawith_uid), token, ex=self._session_ttl,
             )
-            self._session.add(mapping)
-            await self._session.commit()
-        else:
-            # 4. Login with mapped account
-            token = await self._client.login(
-                mapping.bisheng_username, mapping.bisheng_username
-            )
+        return token
 
-        # 5. Cache
-        await self._redis.set(cache_key, token, ex=self._session_ttl)
+    async def _login_for_user(self, clawith_uid: str) -> str:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(UserMapping).where(UserMapping.clawith_uid == clawith_uid)
+            )
+            mapping = result.scalar_one_or_none()
+
+            if mapping is None:
+                bisheng_username = f"clawith_{clawith_uid}"
+                token = await self._client.login(bisheng_username, bisheng_username)
+                mapping = UserMapping(
+                    clawith_uid=clawith_uid,
+                    bisheng_uid=bisheng_username,
+                    bisheng_username=bisheng_username,
+                )
+                session.add(mapping)
+                await session.commit()
+            else:
+                token = await self._client.login(
+                    mapping.bisheng_username, mapping.bisheng_username,
+                )
         return token
