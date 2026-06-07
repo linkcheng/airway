@@ -1,0 +1,23 @@
+server:
+  host: "0.0.0.0"
+  port: 8090
+
+bisheng:
+  base_url: "http://localhost:7860"
+  admin_user: "admin"
+  admin_password: "${BISHENG_ADMIN_PASSWORD}"
+
+database:
+  url: "postgresql+asyncpg://airway:airway@localhost:5432/airway_db"
+
+redis:
+  url: "redis://localhost:6379/0"
+  key_prefix: "airway:"
+
+knowledge_bases:
+  - name: "company-faq"
+    bisheng_knowledge_id: 1
+    description: "公司常见问题"
+  - name: "product-docs"
+    bisheng_knowledge_id: 2
+    description: "产品文档"
