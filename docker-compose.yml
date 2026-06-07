@@ -1,0 +1,19 @@
+services:
+  airway:
+    build: .
+    ports:
+      - "${AIRWAY_SERVER_PORT:-8900}:8900"
+    environment:
+      - AIRWAY_BISHENG_API_URL=${AIRWAY_BISHENG_API_URL}
+      - AIRWAY_BISHENG_TOKEN=${AIRWAY_BISHENG_TOKEN}
+      - AIRWAY_BISHENG_USERNAME=${AIRWAY_BISHENG_USERNAME:-}
+      - AIRWAY_BISHENG_PASSWORD=${AIRWAY_BISHENG_PASSWORD:-}
+      - AIRWAY_SERVER_HOST=0.0.0.0
+      - AIRWAY_SERVER_PORT=8900
+      - AIRWAY_API_TIMEOUT=${AIRWAY_API_TIMEOUT:-30.0}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8900/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
