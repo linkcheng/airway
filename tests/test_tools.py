@@ -1,6 +1,8 @@
-# tests/test_tools.py
 import json
+
+import httpx
 import pytest
+
 from airway.mcp.tools import AirwayTools
 
 
@@ -9,6 +11,10 @@ def mock_proxy():
     class MockProxy:
         async def get_session(self, uid):
             return f"token_{uid}"
+
+        async def refresh_session(self, uid):
+            return f"token_{uid}_refreshed"
+
     return MockProxy()
 
 
@@ -32,6 +38,7 @@ def mock_bisheng():
             return [
                 {"chunk_text": f"结果: {query}", "score": 0.9, "source_file": "a.md"},
             ]
+
     return MockBisheng()
 
 
@@ -64,3 +71,35 @@ async def test_knowledge_search_tool(tools: AirwayTools):
     parsed = json.loads(result)
     assert len(parsed) == 1
     assert parsed[0]["score"] == 0.9
+
+
+@pytest.mark.asyncio
+async def test_knowledge_search_retry_on_401():
+    call_count = 0
+
+    class FailingProxy:
+        async def get_session(self, uid):
+            return f"token_{uid}"
+
+        async def refresh_session(self, uid):
+            return f"token_{uid}_new"
+
+    class FailingBisheng:
+        async def knowledge_search(self, token, query, knowledge_id, top_k=5):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise httpx.HTTPStatusError(
+                    "Unauthorized",
+                    request=httpx.Request("POST", "http://test"),
+                    response=httpx.Response(401),
+                )
+            return [{"chunk_text": f"结果: {query}", "score": 0.95}]
+
+    tools = AirwayTools(proxy=FailingProxy(), client=FailingBisheng())
+    result = await tools.knowledge_search(
+        user_id="u_test", query="重试测试", knowledge_id="k1",
+    )
+    assert call_count == 2
+    parsed = json.loads(result)
+    assert parsed[0]["score"] == 0.95
