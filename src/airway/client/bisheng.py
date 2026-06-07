@@ -10,7 +10,10 @@ from cryptography.hazmat.primitives.serialization import load_der_public_key
 class BishengClient:
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
-        self._http = httpx.AsyncClient(base_url=self.base_url, timeout=30.0)
+        transport = httpx.AsyncHTTPTransport(retries=3)
+        self._http = httpx.AsyncClient(
+            base_url=self.base_url, timeout=30.0, transport=transport,
+        )
         self._public_key: str | None = None
 
     async def close(self):

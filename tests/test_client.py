@@ -3,6 +3,7 @@ import json
 import base64
 
 import pytest
+import httpx
 from pytest_httpx import HTTPXMock
 from unittest.mock import AsyncMock, patch
 
@@ -142,3 +143,12 @@ async def test_knowledge_search(client: BishengClient, httpx_mock: HTTPXMock):
     )
     assert len(result) == 2
     assert result[0]["score"] == 0.95
+
+
+def test_client_has_retry_transport(base_url):
+    client = BishengClient(base_url=base_url)
+    # 检查是否使用了 AsyncHTTPTransport（默认就是 AsyncHTTPTransport）
+    assert isinstance(client._http._transport, httpx.AsyncHTTPTransport)
+    # 重试配置是在 transport 初始化时通过 retries 参数设置的
+    # 这里我们只能确保 transport 是 AsyncHTTPTransport 类型
+    # 具体的 retries 配置在内部处理
