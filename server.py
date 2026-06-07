@@ -48,8 +48,6 @@ async def workflow_continue(task_id: str, inputs: dict, message_id: str) -> dict
 
 
 if __name__ == "__main__":
-    import asyncio
-
     from config import load_config
 
     cfg = load_config("config.yaml")

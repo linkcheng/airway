@@ -1,4 +1,4 @@
-from .client import AirwayError, BishengV2Client
+from .client import BishengV2Client
 from .auth import BishengV1Client
 
 
