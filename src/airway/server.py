@@ -1,11 +1,11 @@
-# src/airway/server.py
 import argparse
 import logging
 
 import redis.asyncio as aioredis
-from fastmcp import FastMCP
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from fastmcp import Context, FastMCP
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from airway.auth.jwt import verify_clawith_jwt
 from airway.auth.proxy import AuthProxy
 from airway.client.bisheng import BishengClient
 from airway.config import get_settings
@@ -25,6 +25,25 @@ def _get_tools() -> AirwayTools:
     return _tools
 
 
+def _resolve_user_id(ctx: Context) -> str:
+    meta = {}
+    rc = getattr(ctx, "request_context", None)
+    if rc:
+        params = getattr(rc, "params", None)
+        if params:
+            meta = getattr(params, "meta", None) or {}
+
+    if "authorization" in meta:
+        token = meta["authorization"].removeprefix("Bearer ")
+        settings = get_settings()
+        return verify_clawith_jwt(
+            token, settings.clawith_jwt_secret, settings.clawith_jwt_algorithm,
+        )
+    if "user_id" in meta:
+        return meta["user_id"]
+    raise ValueError("No authentication provided")
+
+
 async def init_deps() -> AirwayTools:
     global _tools, _engine
 
@@ -39,6 +58,7 @@ async def init_deps() -> AirwayTools:
     except Exception:
         logger.warning("Redis unavailable, running without cache")
         redis = None
+
     client = BishengClient(base_url=settings.bisheng_base_url)
 
     proxy = AuthProxy(
@@ -52,22 +72,25 @@ async def init_deps() -> AirwayTools:
 
 
 @mcp.tool()
-async def knowledge_list(user_id: str, page: int = 1, size: int = 20) -> str:
-    """列出用户可访问的知识库。user_id 是 Clawith 用户 ID。"""
+async def knowledge_list(ctx: Context, page: int = 1, size: int = 20) -> str:
+    """列出用户可访问的知识库。"""
+    user_id = _resolve_user_id(ctx)
     return await _get_tools().knowledge_list(user_id, page=page, size=size)
 
 
 @mcp.tool()
-async def knowledge_detail(user_id: str, knowledge_id: str) -> str:
+async def knowledge_detail(ctx: Context, knowledge_id: str) -> str:
     """获取知识库详情。knowledge_id 是 Bisheng 知识库 ID。"""
+    user_id = _resolve_user_id(ctx)
     return await _get_tools().knowledge_detail(user_id, knowledge_id)
 
 
 @mcp.tool()
 async def knowledge_search(
-    user_id: str, query: str, knowledge_id: str, top_k: int = 5,
+    ctx: Context, query: str, knowledge_id: str, top_k: int = 5,
 ) -> str:
     """在知识库中进行 RAG 检索。query 是检索问题，knowledge_id 是知识库 ID。"""
+    user_id = _resolve_user_id(ctx)
     return await _get_tools().knowledge_search(
         user_id, query=query, knowledge_id=knowledge_id, top_k=top_k,
     )
