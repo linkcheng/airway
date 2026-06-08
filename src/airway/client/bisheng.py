@@ -100,3 +100,17 @@ class BishengClient:
             token,
             json_body={"query": query, "knowledge_id": knowledge_id, "top_k": top_k},
         )
+
+    async def workflow_list(self, token: str, page: int = 1, size: int = 10, name: str | None = None) -> dict:
+        params: dict = {"page_num": page, "page_size": size}
+        if name:
+            params["name"] = name
+        return await self._request("GET", "/api/v1/workflow/list", token, params=params)
+
+    async def workflow_invoke(self, token: str, workflow_id: str, *, input: str | None = None, overrides: dict | None = None) -> dict:
+        body: dict = {"workflow_id": workflow_id, "stream": False}
+        if input:
+            body["input"] = input
+        if overrides:
+            body["override"] = overrides
+        return await self._request("POST", "/api/v2/workflow/invoke", token, json_body=body)

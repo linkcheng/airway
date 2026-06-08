@@ -152,3 +152,81 @@ def test_client_has_retry_transport(base_url):
     # 重试配置是在 transport 初始化时通过 retries 参数设置的
     # 这里我们只能确保 transport 是 AsyncHTTPTransport 类型
     # 具体的 retries 配置在内部处理
+
+
+WORKFLOW_LIST_RESPONSE = {
+    "code": 200,
+    "data": {
+        "list": [
+            {"id": "w1", "name": "数据处理", "description": "ETL 流程", "flow_type": 10, "status": 1},
+            {"id": "w2", "name": "报告生成", "description": "自动生成报告", "flow_type": 10, "status": 1},
+        ],
+        "total": 2,
+    },
+}
+
+
+@pytest.mark.asyncio
+async def test_workflow_list(client: BishengClient, httpx_mock: HTTPXMock):
+    httpx_mock.add_response(
+        url="http://bisheng-test:7860/api/v1/workflow/list?page_num=1&page_size=10",
+        json=WORKFLOW_LIST_RESPONSE,
+    )
+    result = await client.workflow_list(token="test_token")
+    assert result["total"] == 2
+    assert len(result["list"]) == 2
+    assert result["list"][0]["name"] == "数据处理"
+
+
+@pytest.mark.asyncio
+async def test_workflow_list_with_name_filter(client: BishengClient, httpx_mock: HTTPXMock):
+    httpx_mock.add_response(
+        url="http://bisheng-test:7860/api/v1/workflow/list?page_num=1&page_size=10&name=%E6%95%B0%E6%8D%AE",
+        json={
+            "code": 200,
+            "data": {
+                "list": [
+                    {"id": "w1", "name": "数据处理", "description": "ETL 流程", "flow_type": 10, "status": 1},
+                ],
+                "total": 1,
+            },
+        },
+    )
+    result = await client.workflow_list(token="test_token", name="数据")
+    assert result["total"] == 1
+    assert result["list"][0]["name"] == "数据处理"
+
+
+WORKFLOW_INVOKE_RESPONSE = {
+    "code": 200,
+    "data": {
+        "session_id": "sess_abc123",
+        "events": [
+            {"event": "output_msg", "data": {"message": "处理完成", "output_key": "result"}},
+        ],
+    },
+}
+
+
+@pytest.mark.asyncio
+async def test_workflow_invoke(client: BishengClient, httpx_mock: HTTPXMock):
+    httpx_mock.add_response(
+        url="http://bisheng-test:7860/api/v2/workflow/invoke",
+        json=WORKFLOW_INVOKE_RESPONSE,
+    )
+    result = await client.workflow_invoke(token="test_token", workflow_id="w1")
+    assert result["session_id"] == "sess_abc123"
+    assert len(result["events"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_workflow_invoke_with_input(client: BishengClient, httpx_mock: HTTPXMock):
+    httpx_mock.add_response(
+        url="http://bisheng-test:7860/api/v2/workflow/invoke",
+        json=WORKFLOW_INVOKE_RESPONSE,
+    )
+    result = await client.workflow_invoke(
+        token="test_token", workflow_id="w1",
+        input="查询数据", overrides={"node_1": {"param": "value"}},
+    )
+    assert result["session_id"] == "sess_abc123"
