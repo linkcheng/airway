@@ -39,6 +39,20 @@ def mock_bisheng():
                 {"chunk_text": f"结果: {query}", "score": 0.9, "source_file": "a.md"},
             ]
 
+        async def workflow_list(self, token, page=1, size=10, name=None):
+            return {
+                "list": [
+                    {"id": "w1", "name": "数据处理", "description": "ETL", "flow_type": 10, "status": 1},
+                ],
+                "total": 1,
+            }
+
+        async def workflow_invoke(self, token, workflow_id, *, input=None, overrides=None):
+            return {
+                "session_id": "sess_test",
+                "events": [{"event": "output_msg", "data": {"message": "完成"}}],
+            }
+
     return MockBisheng()
 
 
@@ -103,3 +117,44 @@ async def test_knowledge_search_retry_on_401():
     assert call_count == 2
     parsed = json.loads(result)
     assert parsed[0]["score"] == 0.95
+
+
+@pytest.mark.asyncio
+async def test_workflow_list_tool(tools: AirwayTools):
+    result = await tools.workflow_list(user_id="u_test", page=1, size=10)
+    parsed = json.loads(result)
+    assert parsed["total"] == 1
+    assert parsed["list"][0]["name"] == "数据处理"
+
+
+@pytest.mark.asyncio
+async def test_workflow_run_caches_result(tools: AirwayTools):
+    result = await tools.workflow_run(user_id="u_test", workflow_id="w1")
+    parsed = json.loads(result)
+    assert parsed["session_id"] == "sess_test"
+    assert "sess_test" in tools._results
+
+
+@pytest.mark.asyncio
+async def test_workflow_status_found(tools: AirwayTools):
+    await tools.workflow_run(user_id="u_test", workflow_id="w1")
+    result = await tools.workflow_status(user_id="u_test", workflow_id="w1", session_id="sess_test")
+    parsed = json.loads(result)
+    assert parsed["session_id"] == "sess_test"
+
+
+@pytest.mark.asyncio
+async def test_workflow_status_not_found(tools: AirwayTools):
+    result = await tools.workflow_status(user_id="u_test", workflow_id="w1", session_id="nonexistent")
+    parsed = json.loads(result)
+    assert parsed["status"] == "not_found"
+
+
+@pytest.mark.asyncio
+async def test_workflow_run_with_overrides(tools: AirwayTools):
+    result = await tools.workflow_run(
+        user_id="u_test", workflow_id="w1",
+        input="查询", overrides={"node_1": {"key": "val"}},
+    )
+    parsed = json.loads(result)
+    assert parsed["session_id"] == "sess_test"

@@ -10,6 +10,7 @@ class AirwayTools:
     def __init__(self, proxy: AuthProxy, client: BishengClient):
         self._proxy = proxy
         self._client = client
+        self._results: dict[str, dict] = {}
 
     async def _with_retry(self, user_id: str, fn):
         token = await self._proxy.get_session(user_id)
@@ -48,3 +49,24 @@ class AirwayTools:
             )
             return json.dumps(result, ensure_ascii=False)
         return await self._with_retry(user_id, _do)
+
+    async def workflow_list(self, user_id: str, page: int = 1, size: int = 10, name: str | None = None) -> str:
+        async def _do(token: str):
+            result = await self._client.workflow_list(token, page=page, size=size, name=name)
+            return json.dumps(result, ensure_ascii=False)
+        return await self._with_retry(user_id, _do)
+
+    async def workflow_run(self, user_id: str, workflow_id: str, *, input: str | None = None, overrides: dict | None = None) -> str:
+        async def _do(token: str):
+            result = await self._client.workflow_invoke(token, workflow_id, input=input, overrides=overrides)
+            session_id = result.get("session_id", "")
+            if session_id:
+                self._results[session_id] = result
+            return json.dumps(result, ensure_ascii=False)
+        return await self._with_retry(user_id, _do)
+
+    async def workflow_status(self, user_id: str, workflow_id: str, session_id: str) -> str:
+        result = self._results.get(session_id)
+        if result is None:
+            return json.dumps({"status": "not_found"}, ensure_ascii=False)
+        return json.dumps(result, ensure_ascii=False)
