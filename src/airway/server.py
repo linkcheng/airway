@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 
 import redis.asyncio as aioredis
@@ -94,6 +95,33 @@ async def knowledge_search(
     return await _get_tools().knowledge_search(
         user_id, query=query, knowledge_id=knowledge_id, top_k=top_k,
     )
+
+
+@mcp.tool()
+async def workflow_list(ctx: Context, page: int = 1, size: int = 10, name: str | None = None) -> str:
+    """列出可用的 Workflow。name 参数可模糊搜索。"""
+    user_id = _resolve_user_id(ctx)
+    return await _get_tools().workflow_list(user_id, page=page, size=size, name=name)
+
+
+@mcp.tool()
+async def workflow_run(ctx: Context, workflow_id: str, input: str | None = None, overrides: str | None = None) -> str:
+    """执行 Workflow。workflow_id 是 Bisheng Workflow ID，input 是用户输入，overrides 是节点参数覆盖（JSON 字符串）。"""
+    user_id = _resolve_user_id(ctx)
+    overrides_dict = None
+    if overrides:
+        try:
+            overrides_dict = json.loads(overrides)
+        except json.JSONDecodeError:
+            return json.dumps({"error": "overrides 不是有效的 JSON"}, ensure_ascii=False)
+    return await _get_tools().workflow_run(user_id, workflow_id, input=input, overrides=overrides_dict)
+
+
+@mcp.tool()
+async def workflow_status(ctx: Context, workflow_id: str, session_id: str) -> str:
+    """查询 Workflow 执行结果。session_id 来自 workflow_run 的返回。"""
+    user_id = _resolve_user_id(ctx)
+    return await _get_tools().workflow_status(user_id, workflow_id=workflow_id, session_id=session_id)
 
 
 def main():
