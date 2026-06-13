@@ -188,6 +188,7 @@ async def test_ensure_user_mapping_new_user_registers(config, mock_client):
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.add = MagicMock()
 
     @asynccontextmanager
     async def factory():
@@ -230,6 +231,7 @@ async def test_ensure_user_mapping_existing_returns_directly(config, mock_client
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = existing
     mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.add = MagicMock()
 
     @asynccontextmanager
     async def factory():
@@ -265,6 +267,7 @@ async def test_ensure_user_mapping_conflict_fallback_login(config, mock_client):
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.add = MagicMock()
 
     @asynccontextmanager
     async def factory():
@@ -323,6 +326,7 @@ async def test_rag_chat_success(config_with_workflow):
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.add = MagicMock()
 
     @asynccontextmanager
     async def factory():
@@ -393,6 +397,7 @@ async def test_rag_chat_without_chat_id_returns_session(config_with_workflow):
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.add = MagicMock()
 
     @asynccontextmanager
     async def factory():
@@ -430,6 +435,7 @@ async def test_rag_chat_with_chat_id_passes_to_workflow(config_with_workflow):
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute = AsyncMock(return_value=mock_result)
+    mock_session.add = MagicMock()
 
     @asynccontextmanager
     async def factory():
