@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -11,6 +12,23 @@ class Settings(BaseSettings):
     server_host: str = "0.0.0.0"
     server_port: int = 8900
     api_timeout: float = 30.0
+    user_tokens: dict[str, str] = {}
+    bisheng_user_tokens: str = ""
+
+    @field_validator("user_tokens", mode="before")
+    @classmethod
+    def parse_user_tokens(cls, v: str | dict[str, str]) -> dict[str, str]:
+        if isinstance(v, dict):
+            return v
+        if isinstance(v, str) and v:
+            tokens = {}
+            for pair in v.split(","):
+                pair = pair.strip()
+                if ":" in pair:
+                    uid, token = pair.split(":", 1)
+                    tokens[uid.strip()] = token.strip()
+            return tokens
+        return {}
 
     model_config = {"env_file": ".env", "env_prefix": "AIRWAY_"}
 
