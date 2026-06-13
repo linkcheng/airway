@@ -12,6 +12,14 @@ class BishengAuth(Protocol):
         """Get cached token or login if expired."""
         ...
 
+    async def register_user(self, user_name: str, password: str) -> int:
+        """Register a new user in Bisheng. Returns user_id."""
+        ...
+
+    async def login_user(self, user_name: str, password: str) -> tuple[int, str]:
+        """Login as a specific user. Returns (user_id, access_token)."""
+        ...
+
 
 class BishengClient(Protocol):
     async def list_knowledge(self, page_size: int = 100) -> list[dict]:
@@ -26,4 +34,12 @@ class BishengClient(Protocol):
         self, knowledge_id: int, keyword: str, page: int = 1, limit: int = 10
     ) -> list[dict]:
         """Search document chunks in a knowledge base."""
+        ...
+
+
+class BishengWorkflow(Protocol):
+    async def invoke(
+        self, workflow_id: str, query: str, token: str, session_id: str | None = None
+    ) -> tuple[str, str]:
+        """Invoke a Bisheng Workflow via SSE. Returns (answer, session_id)."""
         ...

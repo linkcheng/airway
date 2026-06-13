@@ -1,6 +1,7 @@
 # ruff: noqa: F821
 from __future__ import annotations
 
+import hashlib
 from typing import TYPE_CHECKING
 
 from fastmcp import FastMCP
@@ -13,13 +14,15 @@ from airway.errors import to_tool_error
 _session_factory = None
 
 if TYPE_CHECKING:
-    from airway.adapters.protocols import BishengClient
+    from airway.adapters.protocols import BishengAuth, BishengClient
     from airway.config import AppConfig
 
 mcp = FastMCP("airway", mask_error_details=True)
 
-_config: AppConfig  # noqa: F821
-_client: BishengClient  # noqa: F821
+_config: AppConfig = None  # type: ignore[assignment]  # noqa: F821
+_client: BishengClient = None  # type: ignore[assignment]  # noqa: F821
+_auth: BishengAuth = None  # type: ignore[assignment]  # noqa: F821
+_workflow = None  # type: ignore[assignment]
 
 
 def _validate_query(query: str) -> None:
@@ -33,8 +36,6 @@ def _validate_top_k(top_k: int) -> None:
 
 
 async def _ensure_user_mapping(clawith_user_id: str) -> tuple[int, str]:
-    if _session_factory is None:
-        return 0, "admin"
     from sqlalchemy import select
 
     from airway.models.user_mapping import MappingStatus, UserMapping
@@ -47,19 +48,26 @@ async def _ensure_user_mapping(clawith_user_id: str) -> tuple[int, str]:
         if mapping and mapping.status == MappingStatus.ACTIVE:
             return mapping.bisheng_user_id, mapping.bisheng_user_name
 
-        # Create Bisheng user via registration API
         user_name = f"clawith_{clawith_user_id[:20]}"
-        # For MVP: use admin credentials; real impl would call /api/v1/user/regist
-        # and save mapping
+        password = hashlib.md5(f"airway_{clawith_user_id}".encode()).hexdigest()
+
+        try:
+            bisheng_user_id = await _auth.register_user(user_name, password)
+        except AirwayError as e:
+            if e.code != "USER_CONFLICT":
+                raise AirwayError("REGISTER_ERROR", "用户注册服务暂时不可用，请稍后重试")
+            bisheng_user_id, _ = await _auth.login_user(user_name, password)
+
         mapping = UserMapping(
             clawith_user_id=clawith_user_id,
-            bisheng_user_id=0,
+            bisheng_user_id=bisheng_user_id,
             bisheng_user_name=user_name,
+            password_hash=password,
             status=MappingStatus.ACTIVE,
         )
         session.add(mapping)
         await session.commit()
-        return 0, user_name
+        return bisheng_user_id, user_name
 
 
 def _resolve_kb(name: str) -> int:
@@ -151,6 +159,27 @@ async def knowledge_search(query: str, knowledge_base: str, top_k: int = 10) -> 
             lines.append(content)
             lines.append("")
         return "\n".join(lines)
+    except AirwayError as e:
+        raise to_tool_error(e)
+
+
+def _resolve_workflow(name: str) -> str:
+    return _config.kb_name_to_workflow(name)
+
+
+@mcp.tool
+async def rag_chat(query: str, knowledge_base: str, chat_id: str | None = None) -> str:
+    """RAG 问答：通过 Workflow 获取 AI 生成的完整答案"""
+    try:
+        _validate_query(query)
+        workflow_id = _resolve_workflow(knowledge_base)
+        user_id, user_name = await _ensure_user_mapping("default_agent")
+        token = await _auth.get_token()
+        answer, session_id = await _workflow.invoke(
+            workflow_id=workflow_id, query=query, token=token, session_id=chat_id
+        )
+        prefix = f"[会话 ID: {session_id}]\n\n" if session_id else ""
+        return f"{prefix}{answer}"
     except AirwayError as e:
         raise to_tool_error(e)
 

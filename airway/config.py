@@ -31,6 +31,7 @@ class RedisConfig(BaseModel):
 class KnowledgeBaseEntry(BaseModel):
     name: str
     bisheng_knowledge_id: int
+    workflow_id: str | None = None
     description: str = ""
 
 
@@ -45,6 +46,16 @@ class AppConfig(BaseSettings):
         for kb in self.knowledge_bases:
             if kb.name == name:
                 return kb.bisheng_knowledge_id
+        raise AirwayError("KB_NOT_FOUND", f'知识库 "{name}" 不存在')
+
+    def kb_name_to_workflow(self, name: str) -> str:
+        for kb in self.knowledge_bases:
+            if kb.name == name:
+                if not kb.workflow_id:
+                    raise AirwayError(
+                        "NO_WORKFLOW", f'知识库 "{name}" 未配置 Workflow，请使用 rag_query 进行文档检索'
+                    )
+                return kb.workflow_id
         raise AirwayError("KB_NOT_FOUND", f'知识库 "{name}" 不存在')
 
 

@@ -89,3 +89,33 @@ class BishengAuthProvider:
         if cached:
             return cached
         return await self.login()
+
+    async def register_user(self, user_name: str, password: str) -> int:
+        encrypted_pw = await self.encrypt_password(password)
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                f"{self._base_url}/api/v1/user/regist",
+                json={"user_name": user_name, "password": encrypted_pw},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("status_code") == 200:
+                return data["data"]["user_id"]
+            if data.get("status_code") == 10605:
+                raise AirwayError("USER_CONFLICT", "用户名已存在")
+            raise AirwayError("REGISTER_ERROR", f"用户注册失败: {data.get('status_message')}")
+
+    async def login_user(self, user_name: str, password: str) -> tuple[int, str]:
+        encrypted_pw = await self.encrypt_password(password)
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(
+                f"{self._base_url}/api/v1/user/login",
+                json={"user_name": user_name, "password": encrypted_pw},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("status_code") != 200:
+                raise AirwayError("AUTH_ERROR", f"用户登录失败: {data.get('status_message')}")
+            user_id = data["data"]["user_id"]
+            token = data["data"]["access_token"]
+            return user_id, token

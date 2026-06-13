@@ -115,3 +115,69 @@ async def test_get_token_cache_miss_triggers_login(config):
     ):
         token = await auth.get_token()
         assert token == "fresh_token"
+
+
+@pytest.mark.asyncio
+async def test_register_user_success(config):
+    from airway.adapters.bisheng.auth import BishengAuthProvider
+
+    auth = BishengAuthProvider(config)
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "status_code": 200,
+        "data": {"user_id": 42},
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with (
+        patch.object(auth, "encrypt_password", return_value="enc_pw"),
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response),
+    ):
+        user_id = await auth.register_user("clawith_user123", "airway_user123")
+        assert user_id == 42
+
+
+@pytest.mark.asyncio
+async def test_register_user_conflict(config):
+    from airway.adapters.bisheng.auth import BishengAuthProvider
+    from airway.config import AirwayError
+
+    auth = BishengAuthProvider(config)
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "status_code": 10605,
+        "status_message": "User Name already exist",
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with (
+        patch.object(auth, "encrypt_password", return_value="enc_pw"),
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response),
+    ):
+        with pytest.raises(AirwayError) as exc_info:
+            await auth.register_user("clawith_existing", "airway_existing")
+        assert exc_info.value.code == "USER_CONFLICT"
+
+
+@pytest.mark.asyncio
+async def test_login_user_success(config):
+    from airway.adapters.bisheng.auth import BishengAuthProvider
+
+    auth = BishengAuthProvider(config)
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "status_code": 200,
+        "data": {
+            "user_id": 42,
+            "access_token": "user_jwt_token",
+        },
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    with (
+        patch.object(auth, "encrypt_password", return_value="enc_pw"),
+        patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response),
+    ):
+        user_id, token = await auth.login_user("clawith_user123", "airway_user123")
+        assert user_id == 42
+        assert token == "user_jwt_token"
